@@ -1,0 +1,43 @@
+server:
+  port: ${SERVER_PORT:8083}
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/offers}
+    username: ${SPRING_DATASOURCE_USERNAME:offers}
+    password: ${SPRING_DATASOURCE_PASSWORD:offers}
+
+  jpa:
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:validate}
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: ${SPRING_FLYWAY_ENABLED:true}
+    locations: classpath:db/migration
+
+offers:
+  ttlMinutes: ${OFFERS_TTL_MINUTES:30}
+  resultsPerSearch: ${OFFERS_RESULTS_PER_SEARCH:60}
+  pageSizeDefault: ${OFFERS_PAGE_SIZE_DEFAULT:20}
+  simulatePriceChange: ${OFFERS_SIMULATE_PRICE_CHANGE:false}
+  cleanupMs: ${OFFERS_CLEANUP_MS:600000}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  pattern:
+    level: "%5p [traceId=%X{traceId}]"
+
+springdoc:
+  api-docs:
+    path: /v1/api-docs
+  swagger-ui:
+    path: /v1/swagger-ui.html

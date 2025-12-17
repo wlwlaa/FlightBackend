@@ -1,0 +1,128 @@
+version: "3.9"
+
+services:
+  postgres-identity:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: identity
+      POSTGRES_USER: identity
+      POSTGRES_PASSWORD: identity
+    ports:
+      - "54321:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U identity -d identity"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  identity-service:
+    build:
+      context: ./services/identity-service
+    environment:
+      SERVER_PORT: "8081"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-identity:5432/identity
+      SPRING_DATASOURCE_USERNAME: identity
+      SPRING_DATASOURCE_PASSWORD: identity
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_FLYWAY_ENABLED: "true"
+    depends_on:
+      postgres-identity:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+
+  postgres-catalog:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: catalog
+      POSTGRES_USER: catalog
+      POSTGRES_PASSWORD: catalog
+    ports:
+      - "54323:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catalog -d catalog"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  catalog-service:
+    build:
+      context: ./services/catalog-service
+    environment:
+      SERVER_PORT: "8082"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-catalog:5432/catalog
+      SPRING_DATASOURCE_USERNAME: catalog
+      SPRING_DATASOURCE_PASSWORD: catalog
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_FLYWAY_ENABLED: "true"
+    depends_on:
+      postgres-catalog:
+        condition: service_healthy
+    ports:
+      - "8082:8082"
+
+  postgres-offers:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: offers
+      POSTGRES_USER: offers
+      POSTGRES_PASSWORD: offers
+    ports:
+      - "54325:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U offers -d offers"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  offers-service:
+    build:
+      context: ./services/offers-service
+    environment:
+      SERVER_PORT: "8083"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-offers:5432/offers
+      SPRING_DATASOURCE_USERNAME: offers
+      SPRING_DATASOURCE_PASSWORD: offers
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_FLYWAY_ENABLED: "true"
+    depends_on:
+      postgres-offers:
+        condition: service_healthy
+    ports:
+      - "8083:8083"
+
+  postgres-booking:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: booking
+      POSTGRES_USER: booking
+      POSTGRES_PASSWORD: booking
+    ports:
+      - "54324:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U booking -d booking"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  booking-service:
+    build:
+      context: ./services/booking-service
+    environment:
+      SERVER_PORT: "8084"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-booking:5432/booking
+      SPRING_DATASOURCE_USERNAME: booking
+      SPRING_DATASOURCE_PASSWORD: booking
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_FLYWAY_ENABLED: "true"
+      IDENTITY_BASE_URL: http://identity-service:8081
+      OFFERS_BASE_URL: http://offers-service:8083
+    depends_on:
+      postgres-booking:
+        condition: service_healthy
+      identity-service:
+        condition: service_started
+      offers-service:
+        condition: service_started
+    ports:
+      - "8084:8084"

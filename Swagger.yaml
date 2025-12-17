@@ -1,0 +1,949 @@
+openapi: 3.0.3
+info:
+  title: FlightBooking Backend API
+  version: 1.0.0
+  description: Unified OpenAPI contract for microservices (identity, catalog, offers, booking).
+tags:
+  - name: Auth
+  - name: Me
+  - name: Locations
+  - name: Flights
+  - name: Offers
+  - name: Bookings
+  - name: Payments
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    TraceIdHeader:
+      in: header
+      name: X-Trace-Id
+      required: false
+      schema:
+        type: string
+      description: Optional correlation id for tracing (propagated across services).
+    DeviceIdHeader:
+      in: header
+      name: X-Device-Id
+      required: false
+      schema:
+        type: string
+        minLength: 3
+        maxLength: 256
+      description: |
+        Optional device identifier for guest mode.
+        Booking-service accepts either Authorization Bearer OR X-Device-Id.
+    IdempotencyKeyHeader:
+      in: header
+      name: Idempotency-Key
+      required: false
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+      description: Optional idempotency key for safe retries of write operations.
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [code, message, traceId]
+      properties:
+        code:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          example: query is required
+        details:
+          type: object
+          additionalProperties: true
+        traceId:
+          type: string
+          example: 3f2a9b1c6b1a4c0f
+
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount:
+          type: number
+          format: double
+          example: 199.99
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          example: EUR
+
+    # -------- Identity --------
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: demo@demo.com
+        password:
+          type: string
+          minLength: 6
+          example: demo12345
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+          example: rft_opaque_token
+
+    LogoutRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+          example: rft_opaque_token
+
+    GuestAuthRequest:
+      type: object
+      required: [deviceId]
+      properties:
+        deviceId:
+          type: string
+          minLength: 3
+          maxLength: 256
+          example: ios-device-123
+
+    AuthTokensResponse:
+      type: object
+      required: [accessToken, refreshToken, expiresIn, tokenType]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+          format: int32
+          example: 900
+        tokenType:
+          type: string
+          example: Bearer
+
+    GuestAuthResponse:
+      type: object
+      required: [accessToken, expiresIn, tokenType]
+      properties:
+        accessToken:
+          type: string
+        expiresIn:
+          type: integer
+          format: int32
+          example: 900
+        tokenType:
+          type: string
+          example: Bearer
+
+    MeUserResponse:
+      type: object
+      required: [mode, id, email, createdAt]
+      properties:
+        mode:
+          type: string
+          enum: [user]
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        createdAt:
+          type: string
+          format: date-time
+
+    MeGuestResponse:
+      type: object
+      required: [mode, id, expiresAt]
+      properties:
+        mode:
+          type: string
+          enum: [guest]
+        id:
+          type: string
+          description: Deterministic guest subject, e.g. "guest:<sha256b64url>"
+          example: guest:W6ph5Mm5Pz8GgiULbPgzG37mj9g
+        expiresAt:
+          type: string
+          format: date-time
+
+    # -------- Catalog --------
+    LocationItem:
+      type: object
+      required: [iata, type, name, country, lat, lon]
+      properties:
+        iata:
+          type: string
+          minLength: 3
+          maxLength: 3
+          example: HEL
+          description: IATA code (3 letters)
+        code:
+          type: string
+          minLength: 3
+          maxLength: 3
+          deprecated: true
+          description: Backward-compatible alias for iata (if ever returned by server).
+        type:
+          type: string
+          enum: [city, airport]
+        name:
+          type: string
+        country:
+          type: string
+        city:
+          type: string
+          nullable: true
+        lat:
+          type: number
+          format: double
+        lon:
+          type: number
+          format: double
+
+    LocationsAutocompleteResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocationItem'
+
+    # -------- Offers --------
+    FlightSearchRequest:
+      type: object
+      required: [fromIATA, toIATA, departDate, adults, cabin]
+      properties:
+        fromIATA:
+          type: string
+          minLength: 3
+          maxLength: 3
+          example: HEL
+        toIATA:
+          type: string
+          minLength: 3
+          maxLength: 3
+          example: BCN
+        departDate:
+          type: string
+          format: date-time
+          example: 2026-01-10T00:00:00Z
+        returnDate:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        adults:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 9
+          example: 1
+        cabin:
+          type: string
+          enum: [economy, premium_economy, business, first]
+          example: economy
+
+    FlightOfferSummary:
+      type: object
+      required: [id, fromIATA, toIATA, departAt, arriveAt, price, carrier, validUntil]
+      properties:
+        id:
+          type: string
+          example: HELBCN-20260110-0
+        fromIATA:
+          type: string
+          example: HEL
+        toIATA:
+          type: string
+          example: BCN
+        departAt:
+          type: string
+          format: date-time
+        arriveAt:
+          type: string
+          format: date-time
+        price:
+          $ref: '#/components/schemas/Money'
+        carrier:
+          type: string
+          example: Finnair
+        validUntil:
+          type: string
+          format: date-time
+          description: Offer expiration time (UTC)
+
+    FlightSearchResponse:
+      type: object
+      required: [offers]
+      properties:
+        offers:
+          type: array
+          items:
+            $ref: '#/components/schemas/FlightOfferSummary'
+        nextCursor:
+          type: string
+          nullable: true
+
+    OfferDetailsResponse:
+      type: object
+      required: [offerId, fareName, baggage, rules, refundable, validUntil]
+      properties:
+        offerId:
+          type: string
+        fareName:
+          type: string
+        baggage:
+          type: array
+          items: { type: string }
+        rules:
+          type: array
+          items: { type: string }
+        refundable:
+          type: boolean
+        changeFee:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          nullable: true
+        validUntil:
+          type: string
+          format: date-time
+
+    PriceCheckResponse:
+      type: object
+      required: [offer, priceChanged]
+      properties:
+        offer:
+          $ref: '#/components/schemas/FlightOfferSummary'
+        priceChanged:
+          type: boolean
+          example: false
+
+    # -------- Booking --------
+    Contact:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          nullable: true
+
+    Passenger:
+      type: object
+      required: [firstName, lastName, birthDate, documentNumber]
+      properties:
+        firstName: { type: string }
+        lastName: { type: string }
+        birthDate:
+          type: string
+          format: date-time
+        documentNumber:
+          type: string
+
+    CreateBookingRequest:
+      type: object
+      required: [offerId, contact, passengers]
+      properties:
+        offerId:
+          type: string
+        contact:
+          $ref: '#/components/schemas/Contact'
+        passengers:
+          type: array
+          minItems: 1
+          maxItems: 9
+          items:
+            $ref: '#/components/schemas/Passenger'
+
+    BookingStatus:
+      type: string
+      enum: [draft, confirmed, canceled]
+
+    BookingResponse:
+      type: object
+      required: [id, createdAt, status, offer, contact, passengers]
+      properties:
+        id:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        offer:
+          $ref: '#/components/schemas/FlightOfferSummary'
+        contact:
+          $ref: '#/components/schemas/Contact'
+        passengers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Passenger'
+
+    BookingSummary:
+      type: object
+      required: [id, createdAt, status, offer]
+      properties:
+        id: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/BookingStatus' }
+        offer: { $ref: '#/components/schemas/FlightOfferSummary' }
+
+    BookingListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/BookingSummary' }
+        nextCursor:
+          type: string
+          nullable: true
+
+    CreatePaymentIntentRequest:
+      type: object
+      required: [bookingId]
+      properties:
+        bookingId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: double
+          nullable: true
+          description: Optional; server uses booking snapshot as source of truth.
+        currency:
+          type: string
+          nullable: true
+          description: Optional; server uses booking snapshot as source of truth.
+
+    CreatePaymentIntentResponse:
+      type: object
+      required: [provider, clientSecret]
+      properties:
+        provider:
+          type: string
+          example: mock
+        clientSecret:
+          type: string
+          example: mock_secret_123456
+
+paths:
+  # =========================
+  # Identity Service (8081)
+  # =========================
+  /v1/auth/login:
+    servers: [{ url: http://localhost:8081 }]
+    post:
+      tags: [Auth]
+      parameters: [{ $ref: '#/components/parameters/TraceIdHeader' }]
+      summary: Login with email/password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Tokens issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthTokensResponse' }
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/guest:
+    servers: [{ url: http://localhost:8081 }]
+    post:
+      tags: [Auth]
+      parameters: [{ $ref: '#/components/parameters/TraceIdHeader' }]
+      summary: Issue guest access token (no user persistence)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GuestAuthRequest' }
+      responses:
+        '200':
+          description: Guest access token issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GuestAuthResponse' }
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/refresh:
+    servers: [{ url: http://localhost:8081 }]
+    post:
+      tags: [Auth]
+      parameters: [{ $ref: '#/components/parameters/TraceIdHeader' }]
+      summary: Refresh access token (users only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '200':
+          description: New tokens
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthTokensResponse' }
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Invalid/expired refresh token
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/logout:
+    servers: [{ url: http://localhost:8081 }]
+    post:
+      tags: [Auth]
+      parameters: [{ $ref: '#/components/parameters/TraceIdHeader' }]
+      summary: Revoke refresh token (users only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LogoutRequest' }
+      responses:
+        '204':
+          description: Logged out
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/me:
+    servers: [{ url: http://localhost:8081 }]
+    get:
+      tags: [Me]
+      summary: Get current identity (user or guest)
+      parameters: [{ $ref: '#/components/parameters/TraceIdHeader' }]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current identity
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/MeUserResponse'
+                  - $ref: '#/components/schemas/MeGuestResponse'
+                discriminator:
+                  propertyName: mode
+                  mapping:
+                    user: '#/components/schemas/MeUserResponse'
+                    guest: '#/components/schemas/MeGuestResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # =========================
+  # Catalog Service (8082)
+  # =========================
+  /v1/locations/autocomplete:
+    servers: [{ url: http://localhost:8082 }]
+    get:
+      tags: [Locations]
+      summary: Autocomplete airports/cities by query
+      parameters:
+        - $ref: '#/components/parameters/TraceIdHeader'
+        - in: query
+          name: query
+          required: true
+          schema: { type: string, minLength: 1 }
+          example: hel
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, format: int32, minimum: 1, maximum: 50, default: 10 }
+      responses:
+        '200':
+          description: Autocomplete results
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LocationsAutocompleteResponse' }
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # =========================
+  # Offers Service (8083)
+  # =========================
+  /v1/flights/search:
+    servers: [{ url: http://localhost:8083 }]
+    post:
+      tags: [Flights]
+      summary: Search flight offers
+      parameters: [{ $ref: '#/components/parameters/TraceIdHeader' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FlightSearchRequest' }
+      responses:
+        '200':
+          description: Offers page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FlightSearchResponse' }
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+    get:
+      tags: [Flights]
+      summary: Continue search by cursor
+      parameters:
+        - $ref: '#/components/parameters/TraceIdHeader'
+        - in: query
+          name: cursor
+          required: true
+          schema: { type: string }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, format: int32, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: Offers page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FlightSearchResponse' }
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/offers/{offerId}:
+    servers: [{ url: http://localhost:8083 }]
+    get:
+      tags: [Offers]
+      summary: Get offer details
+      parameters:
+        - $ref: '#/components/parameters/TraceIdHeader'
+        - in: path
+          name: offerId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Offer details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OfferDetailsResponse' }
+        '404':
+          description: Offer not found/expired
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/offers/{offerId}/price-check:
+    servers: [{ url: http://localhost:8083 }]
+    post:
+      tags: [Offers]
+      summary: Verify offer availability and current price
+      parameters:
+        - $ref: '#/components/parameters/TraceIdHeader'
+        - in: path
+          name: offerId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Offer verified
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PriceCheckResponse' }
+        '409':
+          description: Offer expired or unavailable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Offer not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # =========================
+  # Booking Service (8084)
+  # =========================
+  /v1/bookings:
+    servers: [{ url: http://localhost:8084 }]
+    post:
+      tags: [Bookings]
+      summary: Create booking (draft)
+      description: |
+        Auth is optional:
+        - Either send Authorization: Bearer <user/guest token>
+        - Or send X-Device-Id for guest mode.
+      parameters:
+        - $ref: '#/components/parameters/TraceIdHeader'
+        - $ref: '#/components/parameters/DeviceIdHeader'
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateBookingRequest' }
+      responses:
+        '201':
+          description: Booking created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingResponse' }
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: Missing identity (no Authorization and no X-Device-Id)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Offer expired/unavailable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+    get:
+      tags: [Bookings]
+      summary: List bookings for current identity
+      description: |
+        Auth is optional:
+        - Either Authorization: Bearer <user/guest token>
+        - Or X-Device-Id for guest mode.
+      parameters:
+        - $ref: '#/components/parameters/TraceIdHeader'
+        - $ref: '#/components/parameters/DeviceIdHeader'
+        - in: query
+          name: status
+          required: false
+          schema: { type: string, enum: [draft, confirmed, canceled] }
+        - in: query
+          name: from
+          required: false
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          required: false
+          schema: { type: string, format: date-time }
+        - in: query
+          name: cursor
+          required: false
+          schema: { type: string }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, format: int32, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: Bookings page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingListResponse' }
+        '401':
+          description: Missing identity (no Authorization and no X-Device-Id)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/bookings/{bookingId}:
+    servers: [{ url: http://localhost:8084 }]
+    get:
+      tags: [Bookings]
+      summary: Get booking details
+      description: |
+        Auth is optional:
+        - Either Authorization: Bearer <user/guest token>
+        - Or X-Device-Id for guest mode.
+      parameters:
+        - $ref: '#/components/parameters/TraceIdHeader'
+        - $ref: '#/components/parameters/DeviceIdHeader'
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Booking details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingResponse' }
+        '401':
+          description: Missing identity (no Authorization and no X-Device-Id)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/bookings/{bookingId}/cancel:
+    servers: [{ url: http://localhost:8084 }]
+    post:
+      tags: [Bookings]
+      summary: Cancel booking
+      description: |
+        Auth is optional:
+        - Either Authorization: Bearer <user/guest token>
+        - Or X-Device-Id for guest mode.
+      parameters:
+        - $ref: '#/components/parameters/TraceIdHeader'
+        - $ref: '#/components/parameters/DeviceIdHeader'
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Booking canceled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingResponse' }
+        '401':
+          description: Missing identity (no Authorization and no X-Device-Id)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Invalid state transition
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/bookings/{bookingId}/confirm:
+    servers: [{ url: http://localhost:8084 }]
+    post:
+      tags: [Bookings]
+      summary: Confirm booking (after mock payment)
+      description: |
+        Auth is optional:
+        - Either Authorization: Bearer <user/guest token>
+        - Or X-Device-Id for guest mode.
+      parameters:
+        - $ref: '#/components/parameters/TraceIdHeader'
+        - $ref: '#/components/parameters/DeviceIdHeader'
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Booking confirmed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookingResponse' }
+        '401':
+          description: Missing identity (no Authorization and no X-Device-Id)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Invalid state transition / payment missing
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/payments/intent:
+    servers: [{ url: http://localhost:8084 }]
+    post:
+      tags: [Payments]
+      summary: Create mock payment intent
+      description: |
+        Auth is optional:
+        - Either Authorization: Bearer <user/guest token>
+        - Or X-Device-Id for guest mode.
+        Server treats booking snapshot amount/currency as the source of truth.
+      parameters:
+        - $ref: '#/components/parameters/TraceIdHeader'
+        - $ref: '#/components/parameters/DeviceIdHeader'
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePaymentIntentRequest' }
+      responses:
+        '200':
+          description: Mock intent created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreatePaymentIntentResponse' }
+        '401':
+          description: Missing identity (no Authorization and no X-Device-Id)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: Booking not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Booking not in draft / payment conflict
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
