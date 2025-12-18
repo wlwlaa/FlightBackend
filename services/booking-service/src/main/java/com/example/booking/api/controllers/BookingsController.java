@@ -14,6 +14,9 @@ import org.springframework.web.bind.annotation.*;
 import java.time.Instant;
 import java.util.UUID;
 
+import com.example.booking.common.ApiException;
+import org.springframework.http.HttpStatus;
+
 @RestController
 @RequestMapping("/v1/bookings")
 @Validated
@@ -35,7 +38,7 @@ public class BookingsController {
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
       @Valid @RequestBody CreateBookingRequest req
   ) {
-    OwnerRef owner = ownerResolver.resolve(authorization, deviceId);
+    OwnerRef owner = requireOwner(authorization, deviceId);
     return bookingAppService.createBooking(owner, idempotencyKey, req);
   }
 
@@ -49,7 +52,7 @@ public class BookingsController {
       @RequestParam(value = "cursor", required = false) String cursor,
       @RequestParam(value = "limit", defaultValue = "20") @Min(1) @Max(50) int limit
   ) {
-    OwnerRef owner = ownerResolver.resolve(authorization, deviceId);
+    OwnerRef owner = requireOwner(authorization, deviceId);
     String st = (status == null || status.isBlank()) ? null : status;
     return bookingAppService.listBookings(owner, st, from, to, cursor, limit);
   }
@@ -60,7 +63,7 @@ public class BookingsController {
       @RequestHeader(value = "X-Device-Id", required = false) String deviceId,
       @PathVariable UUID bookingId
   ) {
-    OwnerRef owner = ownerResolver.resolve(authorization, deviceId);
+    OwnerRef owner = requireOwner(authorization, deviceId);
     return bookingAppService.getBooking(owner, bookingId);
   }
 
@@ -71,7 +74,7 @@ public class BookingsController {
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
       @PathVariable UUID bookingId
   ) {
-    OwnerRef owner = ownerResolver.resolve(authorization, deviceId);
+    OwnerRef owner = requireOwner(authorization, deviceId);
     return bookingAppService.cancelBooking(owner, bookingId, idempotencyKey);
   }
 
@@ -82,7 +85,16 @@ public class BookingsController {
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
       @PathVariable UUID bookingId
   ) {
-    OwnerRef owner = ownerResolver.resolve(authorization, deviceId);
+    OwnerRef owner = requireOwner(authorization, deviceId);
     return bookingAppService.confirmBooking(owner, bookingId, idempotencyKey);
+  }
+
+  private OwnerRef requireOwner(String authorization, String deviceId) {
+    OwnerRef owner = ownerResolver.resolve(authorization, deviceId);
+    if (owner == null) {
+      throw new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED",
+          "Missing Authorization Bearer token or X-Device-Id");
+    }
+    return owner;
   }
 }

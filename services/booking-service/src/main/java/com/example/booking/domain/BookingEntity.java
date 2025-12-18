@@ -6,10 +6,15 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 @Entity
 @Table(name = "bookings")
 public class BookingEntity {
   @Id
+  @GeneratedValue(strategy = GenerationType.UUID)
   @Column(nullable = false)
   private UUID id;
 
@@ -25,8 +30,9 @@ public class BookingEntity {
   @Column(name = "offer_id", nullable = false, length = 128)
   private String offerId;
 
+  @JdbcTypeCode(SqlTypes.JSON)
   @Column(name = "offer_snapshot", nullable = false, columnDefinition = "jsonb")
-  private String offerSnapshot;
+  private JsonNode offerSnapshot;
 
   @Column(name = "total_amount", nullable = false, precision = 12, scale = 2)
   private BigDecimal totalAmount;
@@ -34,8 +40,9 @@ public class BookingEntity {
   @Column(nullable = false, length = 3)
   private String currency;
 
+  @JdbcTypeCode(SqlTypes.JSON)
   @Column(nullable = false, columnDefinition = "jsonb")
-  private String contact;
+  private JsonNode contact;
 
   @Column(name = "idempotency_key", length = 128)
   private String idempotencyKey;
@@ -66,14 +73,14 @@ public class BookingEntity {
   public void setStatus(String status) { this.status = status; }
   public String getOfferId() { return offerId; }
   public void setOfferId(String offerId) { this.offerId = offerId; }
-  public String getOfferSnapshot() { return offerSnapshot; }
-  public void setOfferSnapshot(String offerSnapshot) { this.offerSnapshot = offerSnapshot; }
+  public JsonNode getOfferSnapshot() { return offerSnapshot; }
+  public void setOfferSnapshot(JsonNode offerSnapshot) { this.offerSnapshot = offerSnapshot; }
   public BigDecimal getTotalAmount() { return totalAmount; }
   public void setTotalAmount(BigDecimal totalAmount) { this.totalAmount = totalAmount; }
   public String getCurrency() { return currency; }
   public void setCurrency(String currency) { this.currency = currency; }
-  public String getContact() { return contact; }
-  public void setContact(String contact) { this.contact = contact; }
+  public JsonNode getContact() { return contact; }
+  public void setContact(JsonNode contact) { this.contact = contact; }
   public String getIdempotencyKey() { return idempotencyKey; }
   public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
   public Instant getCreatedAt() { return createdAt; }

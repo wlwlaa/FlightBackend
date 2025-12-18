@@ -14,7 +14,33 @@ public interface BookingRepository extends JpaRepository<BookingEntity, UUID> {
   Optional<BookingEntity> findByOwnerTypeAndOwnerIdAndId(String ownerType, String ownerId, UUID id);
   Optional<BookingEntity> findByOwnerTypeAndOwnerIdAndIdempotencyKey(String ownerType, String ownerId, String idempotencyKey);
 
-  @Query(value = "SELECT * FROM bookings WHERE owner_type = :ownerType AND owner_id = :ownerId AND (:status IS NULL OR status = :status) AND (:fromTs IS NULL OR created_at >= :fromTs) AND (:toTs IS NULL OR created_at <= :toTs) AND (:cursorCreatedAt IS NULL OR (created_at < :cursorCreatedAt) OR (created_at = :cursorCreatedAt AND id < :cursorId)) ORDER BY created_at DESC, id DESC LIMIT :lim", nativeQuery = true)
+  @Query(value = """
+      SELECT * FROM bookings
+      WHERE owner_type = :ownerType
+        AND owner_id = :ownerId
+        AND (
+          CAST(:status AS varchar) IS NULL
+          OR status = CAST(:status AS varchar)
+        )
+        AND (
+          CAST(:fromTs AS timestamptz) IS NULL
+          OR created_at >= CAST(:fromTs AS timestamptz)
+        )
+        AND (
+          CAST(:toTs AS timestamptz) IS NULL
+          OR created_at <= CAST(:toTs AS timestamptz)
+        )
+        AND (
+          CAST(:cursorCreatedAt AS timestamptz) IS NULL
+          OR (created_at < CAST(:cursorCreatedAt AS timestamptz))
+          OR (
+            created_at = CAST(:cursorCreatedAt AS timestamptz)
+            AND id < CAST(:cursorId AS uuid)
+          )
+        )
+      ORDER BY created_at DESC, id DESC
+      LIMIT :lim
+      """, nativeQuery = true)
   List<BookingEntity> listPage(
       @Param("ownerType") String ownerType,
       @Param("ownerId") String ownerId,

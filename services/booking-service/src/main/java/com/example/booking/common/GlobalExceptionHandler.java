@@ -2,6 +2,9 @@ package com.example.booking.common;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -14,9 +17,23 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+  private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
   @ExceptionHandler(ApiException.class)
   public ResponseEntity<ErrorResponse> handleApi(ApiException ex, HttpServletRequest req) {
     return ResponseEntity.status(ex.getStatus()).body(new ErrorResponse(ex.getCode(), ex.getMessage(), ex.getDetails(), traceId(req)));
+  }
+
+  @ExceptionHandler(HttpMessageNotReadableException.class)
+  public ResponseEntity<ErrorResponse> handleNotReadable(HttpMessageNotReadableException ex, HttpServletRequest req) {
+    Map<String, Object> details = Map.of("error", rootCauseMessage(ex));
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse("VALIDATION_ERROR", "Malformed JSON request", details, traceId(req)));
+  }
+
+  @ExceptionHandler(IllegalArgumentException.class)
+  public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex, HttpServletRequest req) {
+    Map<String, Object> details = Map.of("error", ex.getMessage());
+    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse("VALIDATION_ERROR", "Invalid request", details, traceId(req)));
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -35,11 +52,19 @@ public class GlobalExceptionHandler {
 
   @ExceptionHandler(Exception.class)
   public ResponseEntity<ErrorResponse> handleAny(Exception ex, HttpServletRequest req) {
+    log.error("Unhandled exception traceId={}", traceId(req), ex);
     return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ErrorResponse("INTERNAL_ERROR","Unexpected error",null, traceId(req)));
   }
 
   private static String traceId(HttpServletRequest req) {
     Object v = req.getAttribute(TraceIdFilter.TRACE_ID_ATTR);
     return v == null ? "unknown" : v.toString();
+  }
+
+  private static String rootCauseMessage(Throwable t) {
+    Throwable cur = t;
+    while (cur.getCause() != null && cur.getCause() != cur) cur = cur.getCause();
+    String msg = cur.getMessage();
+    return (msg == null || msg.isBlank()) ? cur.getClass().getSimpleName() : msg;
   }
 }

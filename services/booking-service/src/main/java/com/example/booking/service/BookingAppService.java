@@ -69,16 +69,18 @@ public class BookingAppService {
     String currency = offer.path("price").path("currency").asText();
 
     BookingEntity b = new BookingEntity();
-    b.setId(UUID.randomUUID());
     b.setOwnerType(owner.type().name());
     b.setOwnerId(owner.id());
     b.setStatus(BookingStatus.draft.name());
     b.setOfferId(req.offerId());
-    b.setOfferSnapshot(offer.toString());
+    b.setOfferSnapshot(offer);
     b.setTotalAmount(amount);
     b.setCurrency(currency);
     b.setContact(serializeContact(req.contact()));
     b.setIdempotencyKey((idempotencyKey == null || idempotencyKey.isBlank()) ? null : idempotencyKey);
+    Instant now = Instant.now();
+    b.setCreatedAt(now);
+    b.setUpdatedAt(now);
 
     bookingRepo.save(b);
     eventRepo.save(new BookingEventEntity(b.getId(), "booking_created", null));
@@ -181,12 +183,14 @@ public class BookingAppService {
     }
 
     PaymentIntentEntity created = new PaymentIntentEntity();
-    created.setId(UUID.randomUUID());
     created.setBookingId(b.getId());
     created.setProvider("mock");
     created.setClientSecret("mock_secret_" + UUID.randomUUID());
     created.setStatus("created");
     created.setIdempotencyKey((idempotencyKey == null || idempotencyKey.isBlank()) ? null : idempotencyKey);
+    Instant now = Instant.now();
+    created.setCreatedAt(now);
+    created.setUpdatedAt(now);
 
     paymentRepo.save(created);
     eventRepo.save(new BookingEventEntity(b.getId(), "payment_intent_created", null));
@@ -231,9 +235,11 @@ public class BookingAppService {
     return new BookingResponse(b.getId(), b.getCreatedAt().toString(), BookingStatus.valueOf(b.getStatus()), offer, contact, pax);
   }
 
-  private FlightOfferSnapshot parseOfferSnapshot(String json) {
+  private FlightOfferSnapshot parseOfferSnapshot(JsonNode n) {
     try {
-      JsonNode n = om.readTree(json);
+      if (n == null || n.isNull()) {
+        throw new IllegalArgumentException("snapshot is null");
+      }
       JsonNode price = n.path("price");
       MoneyDto money = new MoneyDto(price.path("amount").decimalValue(), price.path("currency").asText());
       return new FlightOfferSnapshot(
@@ -250,16 +256,16 @@ public class BookingAppService {
     }
   }
 
-  private String serializeContact(ContactDto c) {
+  private JsonNode serializeContact(ContactDto c) {
     ObjectNode node = om.createObjectNode();
     node.put("email", c.email());
     if (c.phone() != null) node.put("phone", c.phone());
-    return node.toString();
+    return node;
   }
 
-  private ContactDto parseContact(String json) {
+  private ContactDto parseContact(JsonNode n) {
     try {
-      JsonNode n = om.readTree(json);
+      if (n == null || n.isNull()) return new ContactDto("", null);
       String email = n.path("email").asText();
       String phone = n.hasNonNull("phone") ? n.get("phone").asText() : null;
       return new ContactDto(email, phone);

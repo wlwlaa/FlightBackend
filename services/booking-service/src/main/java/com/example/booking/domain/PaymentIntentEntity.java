@@ -9,6 +9,7 @@ import java.util.UUID;
 @Table(name = "payment_intents")
 public class PaymentIntentEntity {
   @Id
+  @GeneratedValue(strategy = GenerationType.UUID)
   @Column(nullable = false)
   private UUID id;
 
@@ -55,4 +56,9 @@ public class PaymentIntentEntity {
   public void setStatus(String status) { this.status = status; }
   public String getIdempotencyKey() { return idempotencyKey; }
   public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
+
+  public Instant getCreatedAt() { return createdAt; }
+  public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+  public Instant getUpdatedAt() { return updatedAt; }
+  public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
 }
